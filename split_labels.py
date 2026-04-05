@@ -2,9 +2,10 @@
 """
 Label Splitter - A4 Etiketten-PDFs aufteilen
 ---------------------------------------------
-Nimmt PDFs die nur Etiketten enthalten (jede Seite = ein Etikett auf A4)
-und schneidet jede Seite auf den Label-Bereich zu.
-Jedes Etikett wird als einzelnes PDF gespeichert.
+Nimmt PDFs und extrahiert nur Seiten die ein Versandetikett enthalten.
+Erkennt automatisch Label-Seiten anhand von Schluesselwoertern
+(DHL, Sendungsnr, Leitcode, Barcode, etc.).
+Seiten ohne Etikett (z.B. Lieferscheine) werden uebersprungen.
 
 Nutzung:
     # PDFs in den 'import' Ordner legen, dann:
@@ -22,6 +23,36 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 IMPORT_DIR = SCRIPT_DIR / "import"
 OUTPUT_DIR = SCRIPT_DIR / "output"
 DONE_DIR = SCRIPT_DIR / "verarbeitet"
+
+# Schluesselwoerter die ein Versandetikett identifizieren
+LABEL_KEYWORDS = [
+    "sendungsnr",
+    "leitcode",
+    "routingcode",
+    "tracking",
+    "paket",
+    "kleinpaket",
+    "dhl",
+    "dpd",
+    "hermes",
+    "gls",
+    "ups",
+    "dpdhl",
+    "deutsche post",
+    "common label",
+]
+
+
+def is_label_page(page) -> bool:
+    """Prueft ob eine Seite ein Versandetikett enthaelt."""
+    try:
+        text = page.extract_text().lower()
+    except Exception:
+        return False
+
+    matches = sum(1 for kw in LABEL_KEYWORDS if kw in text)
+    # Mindestens 2 Schluesselwoerter muessen gefunden werden
+    return matches >= 2
 
 
 def crop_to_label(page):
@@ -46,28 +77,35 @@ def crop_to_label(page):
 
 
 def split_pdf(input_path: Path, output_dir: Path) -> int:
-    """Teilt ein PDF auf: jede Seite wird zugeschnitten und einzeln gespeichert."""
+    """Extrahiert nur Label-Seiten aus einem PDF."""
     reader = PdfReader(input_path)
     count = 0
+    skipped = 0
 
     for i, page in enumerate(reader.pages, start=1):
+        if not is_label_page(page):
+            print(f"  Seite {i}: Kein Etikett erkannt - uebersprungen")
+            skipped += 1
+            continue
+
         page = crop_to_label(page)
 
         writer = PdfWriter()
         writer.add_page(page)
 
         if len(reader.pages) == 1:
-            # Nur eine Seite: gleicher Dateiname
             output_path = output_dir / input_path.name
         else:
-            # Mehrere Seiten: mit Seitennummer
-            output_path = output_dir / f"{input_path.stem}_label{i}.pdf"
+            output_path = output_dir / f"{input_path.stem}_label{count + 1}.pdf"
 
         with open(output_path, "wb") as f:
             writer.write(f)
 
-        print(f"  OK: {input_path.name} -> Label {i}")
+        print(f"  Seite {i}: Label {count + 1} extrahiert")
         count += 1
+
+    if skipped > 0:
+        print(f"  ({skipped} Seite(n) ohne Etikett uebersprungen)")
 
     return count
 
@@ -86,7 +124,7 @@ def main():
         sys.exit(1)
 
     print(f"=== Label Splitter ===")
-    print(f"Schneide jede Seite auf Etikett-Groesse zu.\n")
+    print(f"Erkennt und extrahiert nur Etikett-Seiten.\n")
     print(f"Verarbeite   {len(pdf_files)} PDF(s)...")
     print(f"Import:      {IMPORT_DIR}")
     print(f"Output:      {OUTPUT_DIR}")
@@ -94,12 +132,13 @@ def main():
 
     count = 0
     for pdf_file in pdf_files:
+        print(f"\n{pdf_file.name}:")
         result = split_pdf(pdf_file, OUTPUT_DIR)
         if result > 0:
             shutil.move(str(pdf_file), DONE_DIR / pdf_file.name)
             count += result
 
-    print(f"\n{count} Label(s) erstellt.")
+    print(f"\n{count} Label(s) extrahiert.")
     if count > 0:
         print(f"Originale verschoben nach: {DONE_DIR}")
 
