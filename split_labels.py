@@ -50,7 +50,15 @@ def is_label_page(page) -> bool:
     except Exception:
         return False
 
-    matches = sum(1 for kw in LABEL_KEYWORDS if kw in text)
+    # Leerzeichen zwischen Buchstaben entfernen (manche PDFs haben
+    # "D H L  K L E I N P A K E T" statt "DHL KLEINPAKET")
+    text_compact = text.replace(" ", "")
+
+    # In beiden Varianten suchen
+    matches = sum(
+        1 for kw in LABEL_KEYWORDS
+        if kw in text or kw.replace(" ", "") in text_compact
+    )
     # Mindestens 2 Schluesselwoerter muessen gefunden werden
     return matches >= 2
 
