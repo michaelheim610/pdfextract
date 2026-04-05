@@ -50,10 +50,14 @@ LABEL_KEYWORDS = [
 
 # Bild-Label Konstanten
 SCALE_FACTOR = 0.4800504  # Standard-Skalierung in Whatnot-PDFs
-IMG_FORM_X = 96            # 136 - 40 Rand links (wird nach Rotation zum linken Rand)
+IMG_FORM_X = 136           # Bild-Position im Form XObject
 IMG_FORM_Y = 1172
-IMG_FORM_W = 1100          # 753 + viel Rand oben (wird nach Rotation zum oberen Rand)
+IMG_FORM_W = 753
 IMG_FORM_H = 381
+
+# Raender in pt (nach Rotation: oben/links vom sichtbaren Label)
+MARGIN_TOP = 30   # Rand oben
+MARGIN_LEFT = 10  # Rand links
 
 # 36x89mm in PDF-Punkten
 TARGET_W_PT = 102.05
@@ -163,6 +167,17 @@ def save_image_label(input_path: Path, page_index: int, output_path: Path):
 
     # 270° Rotation -> Hochformat
     page.Rotate = 270
+
+    # Raender hinzufuegen (nach Rotation)
+    # Bei Rotate=270: visuell oben = mediabox links, visuell links = mediabox unten
+    mb = page.mediabox
+    page.mediabox = [
+        float(mb[0]) - MARGIN_TOP,   # oben: links erweitern
+        float(mb[1]) - MARGIN_LEFT,  # links: unten erweitern
+        float(mb[2]),
+        float(mb[3]),
+    ]
+    page.cropbox = page.mediabox
 
     out = pikepdf.new()
     out.pages.append(page)
