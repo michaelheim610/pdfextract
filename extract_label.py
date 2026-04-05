@@ -34,6 +34,24 @@ def extract_label(input_path: Path, output_dir: Path) -> Path | None:
 
     last_page = reader.pages[-1]
 
+    # Leerraum wegschneiden, Inhalt 1:1 behalten
+    media_box = last_page.mediabox
+    page_width = float(media_box.width)
+    page_height = float(media_box.height)
+
+    # Label-Bereich: linke ~58% Breite, obere ~50% Hoehe
+    content_width = page_width * 0.58
+    content_height = page_height * 0.50
+
+    last_page.mediabox.lower_left = (
+        float(media_box.left),
+        page_height - content_height,
+    )
+    last_page.mediabox.upper_right = (
+        float(media_box.left) + content_width,
+        float(media_box.top),
+    )
+
     writer = PdfWriter()
     writer.add_page(last_page)
 
