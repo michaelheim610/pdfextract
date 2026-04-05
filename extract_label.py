@@ -22,6 +22,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 IMPORT_DIR = SCRIPT_DIR / "import"
 OUTPUT_DIR = SCRIPT_DIR / "output"
 
+# DIN A6 Hochkant in PDF-Punkten (1 Punkt = 1/72 Zoll)
+# 105mm x 148mm
+A6_WIDTH = 297.64
+A6_HEIGHT = 419.53
+
 
 def extract_label(input_path: Path, output_dir: Path) -> Path | None:
     """Extrahiert die letzte Seite eines PDFs und speichert sie als Label."""
@@ -33,23 +38,23 @@ def extract_label(input_path: Path, output_dir: Path) -> Path | None:
 
     last_page = reader.pages[-1]
 
-    # Seite auf den bedruckten Bereich (obere Haelfte) zuschneiden
     media_box = last_page.mediabox
+    page_width = float(media_box.width)
     page_height = float(media_box.height)
 
-    # Label-Bereich: oberer Teil der Seite, volle Breite
-    # Das DHL-Label nimmt ca. die obere 50% der A4-Seite ein
-    label_height = page_height * 0.50
+    # Label-Inhalt: obere ~50% der Seite zuschneiden
+    content_height = page_height * 0.50
 
-    # Crop: untere Grenze anheben (PDF-Koordinaten: 0,0 = unten links)
+    # Crop (PDF-Koordinaten: 0,0 = unten links)
     last_page.mediabox.lower_left = (
         float(media_box.left),
-        page_height - label_height,
+        page_height - content_height,
     )
-    last_page.mediabox.upper_right = (
-        float(media_box.right),
-        float(media_box.top),
-    )
+
+    # Auf A6 skalieren (fuellend, gleichmaessig)
+    cropped_width = float(last_page.mediabox.width)
+    cropped_height = float(last_page.mediabox.height)
+    last_page.scale_to(A6_WIDTH, A6_HEIGHT)
 
     writer = PdfWriter()
     writer.add_page(last_page)
