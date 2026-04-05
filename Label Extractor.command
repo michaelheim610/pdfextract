@@ -27,7 +27,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Import-Ordner im Finder oeffnen falls leer
-mkdir -p import output
+mkdir -p import output verarbeitet
 if [ -z "$(ls import/*.pdf 2>/dev/null)" ]; then
     echo "Der Import-Ordner ist leer."
     echo "Lege deine Whatnot-PDFs in diesen Ordner:"

@@ -12,6 +12,7 @@ Nutzung:
     # Die Labels landen im 'output' Ordner mit dem gleichen Dateinamen.
 """
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from pypdf import PdfReader, PdfWriter
 SCRIPT_DIR = Path(__file__).resolve().parent
 IMPORT_DIR = SCRIPT_DIR / "import"
 OUTPUT_DIR = SCRIPT_DIR / "output"
+DONE_DIR = SCRIPT_DIR / "verarbeitet"
 
 # DIN A6 Hochkant in PDF-Punkten (1 Punkt = 1/72 Zoll)
 # 105mm x 148mm
@@ -76,6 +78,7 @@ def extract_label(input_path: Path, output_dir: Path) -> Path | None:
 def main():
     IMPORT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    DONE_DIR.mkdir(parents=True, exist_ok=True)
 
     pdf_files = sorted(IMPORT_DIR.glob("*.pdf"))
 
@@ -86,16 +89,21 @@ def main():
         sys.exit(1)
 
     print(f"Verarbeite {len(pdf_files)} PDF(s)...")
-    print(f"Import:  {IMPORT_DIR}")
-    print(f"Output:  {OUTPUT_DIR}\n")
+    print(f"Import:      {IMPORT_DIR}")
+    print(f"Output:      {OUTPUT_DIR}")
+    print(f"Verarbeitet: {DONE_DIR}\n")
 
     count = 0
     for pdf_file in pdf_files:
         result = extract_label(pdf_file, OUTPUT_DIR)
         if result:
+            # Original-PDF in den verarbeitet-Ordner verschieben
+            shutil.move(str(pdf_file), DONE_DIR / pdf_file.name)
             count += 1
 
     print(f"\n{count} Label(s) extrahiert.")
+    if count > 0:
+        print(f"Originale verschoben nach: {DONE_DIR}")
 
 
 if __name__ == "__main__":
