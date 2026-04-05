@@ -56,8 +56,8 @@ IMG_FORM_W = 753
 IMG_FORM_H = 381
 
 # Raender in pt (nach Rotation: oben/links vom sichtbaren Label)
-MARGIN_TOP = 30   # Rand oben
-MARGIN_LEFT = 10  # Rand links
+MARGIN_TOP = 60   # Rand oben (~21mm)
+MARGIN_LEFT = 20  # Rand links (~7mm)
 
 # 36x89mm in PDF-Punkten
 TARGET_W_PT = 102.05
