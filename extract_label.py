@@ -42,18 +42,21 @@ def extract_label(input_path: Path, output_dir: Path) -> Path | None:
     page_width = float(media_box.width)
     page_height = float(media_box.height)
 
-    # Label-Inhalt: obere ~50% der Seite zuschneiden
+    # Label-Inhalt: linke ~58% Breite, obere ~50% Hoehe
+    content_width = page_width * 0.58
     content_height = page_height * 0.50
 
-    # Crop (PDF-Koordinaten: 0,0 = unten links)
+    # Crop auf den Label-Bereich (PDF-Koordinaten: 0,0 = unten links)
     last_page.mediabox.lower_left = (
         float(media_box.left),
         page_height - content_height,
     )
+    last_page.mediabox.upper_right = (
+        float(media_box.left) + content_width,
+        float(media_box.top),
+    )
 
-    # Auf A6 skalieren (fuellend, gleichmaessig)
-    cropped_width = float(last_page.mediabox.width)
-    cropped_height = float(last_page.mediabox.height)
+    # Auf A6 skalieren (fuellend)
     last_page.scale_to(A6_WIDTH, A6_HEIGHT)
 
     writer = PdfWriter()
