@@ -52,7 +52,7 @@ LABEL_KEYWORDS = [
 SCALE_FACTOR = 0.4800504  # Standard-Skalierung in Whatnot-PDFs
 IMG_FORM_X = 96            # 136 - 40 Rand links (wird nach Rotation zum linken Rand)
 IMG_FORM_Y = 1172
-IMG_FORM_W = 953           # 753 + 160 oben + 40 links-Ausgleich
+IMG_FORM_W = 1100          # 753 + viel Rand oben (wird nach Rotation zum oberen Rand)
 IMG_FORM_H = 381
 
 # 36x89mm in PDF-Punkten
