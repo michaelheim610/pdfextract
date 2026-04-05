@@ -1,29 +1,42 @@
 #!/usr/bin/env python3
 """
-Label Splitter - A4 Etiketten-PDFs aufteilen
----------------------------------------------
-Nimmt PDFs und extrahiert nur Seiten die ein Versandetikett enthalten.
+Label Splitter mit OCR - A4 Etiketten-PDFs aufteilen
+-----------------------------------------------------
+Wie split_labels.py, aber mit OCR-Erkennung fuer Deutsche Post Labels.
+Dadurch wird auch bei Bild-Labels der Whatnot-Alias als Dateiname verwendet.
 
 Erkennt zwei Typen:
-  1) Text-Labels (DHL etc.) - erkannt anhand Schluesselwoertern
-  2) Bild-Labels (Deutsche Post/GoGreen) - erkannt als eingebettete Bilder
+  1) Text-Labels (DHL etc.) - Alias aus PDF-Text extrahiert
+  2) Bild-Labels (Deutsche Post/GoGreen) - Alias per OCR aus dem Bild gelesen
      -> werden auf 36x89mm Hochformat zugeschnitten
 
 Seiten ohne Etikett werden uebersprungen.
 
+Voraussetzungen (zusaetzlich zu requirements.txt):
+    brew install tesseract tesseract-lang
+    pip install pytesseract Pillow
+
 Nutzung:
     # PDFs in den 'import' Ordner legen, dann:
-    python split_labels.py
+    python split_labels_ocr.py
 """
 
 import re
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 import pikepdf
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
+
+try:
+    import pytesseract
+except ImportError:
+    print("FEHLER: pytesseract nicht installiert.")
+    print("  pip install pytesseract Pillow")
+    print("  brew install tesseract tesseract-lang")
+    sys.exit(1)
 
 # Projektverzeichnis (dort wo das Skript liegt)
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -56,7 +69,7 @@ IMG_FORM_Y = 1172
 IMG_FORM_W = 753
 IMG_FORM_H = 381
 
-# Raender in pt (nach Rotation: oben/links vom sichtbaren Label)
+# Raender in pt (oben/links vom sichtbaren Label)
 MARGIN_TOP = 60   # Rand oben (~21mm)
 MARGIN_LEFT = 20  # Rand links (~7mm)
 
@@ -107,11 +120,10 @@ def has_label_image(page) -> bool:
     return False
 
 
-def extract_alias(page) -> str | None:
-    """Extrahiert den Whatnot-Alias des Kaeufers aus einem DHL-Label.
+def extract_alias_from_text(page) -> str | None:
+    """Extrahiert den Whatnot-Alias aus einem DHL-Label (Text-basiert).
 
     Struktur: ... An: / Name / Alias / Strasse ...
-    Der Alias steht in der Zeile nach dem Empfaengernamen.
     """
     try:
         text = page.extract_text()
@@ -140,12 +152,43 @@ def extract_alias(page) -> str | None:
     return None
 
 
-def sanitize_filename(name: str) -> str:
-    """Bereinigt einen String fuer die Nutzung als Dateiname."""
-    # Nur Buchstaben, Zahlen, Bindestrich, Unterstrich behalten
-    clean = re.sub(r"[^\w\-]", "_", name)
-    clean = re.sub(r"_+", "_", clean).strip("_")
-    return clean[:60] if clean else "label"
+def extract_alias_from_image(input_path: Path, page_index: int) -> str | None:
+    """Extrahiert den Whatnot-Alias per OCR aus einem Deutsche Post Bild-Label.
+
+    Sucht nach dem Muster: Name (ALIAS) im OCR-Text.
+    """
+    try:
+        pdf = pikepdf.open(input_path)
+        page = pdf.pages[page_index]
+
+        resources = page.get("/Resources")
+        xobjects = resources.get("/XObject")
+
+        for name in xobjects:
+            obj = xobjects[name]
+            if obj.get("/Subtype") == "/Form":
+                form_res = obj.get("/Resources")
+                form_xobj = form_res.get("/XObject")
+                for fname in form_xobj:
+                    fobj = form_xobj[fname]
+                    if fobj.get("/Subtype") == "/Image":
+                        w = int(fobj.get("/Width"))
+                        h = int(fobj.get("/Height"))
+                        data = fobj.read_bytes()
+                        img = Image.frombytes("RGB", (w, h), bytes(data))
+                        text = pytesseract.image_to_string(img, lang="deu")
+
+                        # Alias in Klammern suchen: "Name (ALIAS)"
+                        match = re.search(r"\(([^)]+)\)", text)
+                        if match:
+                            alias = match.group(1).strip()
+                            if alias and len(alias) >= 2:
+                                pdf.close()
+                                return alias
+        pdf.close()
+    except Exception:
+        pass
+    return None
 
 
 def detect_label_type(page) -> str | None:
@@ -155,6 +198,13 @@ def detect_label_type(page) -> str | None:
     if has_label_image(page):
         return "image"
     return None
+
+
+def sanitize_filename(name: str) -> str:
+    """Bereinigt einen String fuer die Nutzung als Dateiname."""
+    clean = re.sub(r"[^\w\-]", "_", name)
+    clean = re.sub(r"_+", "_", clean).strip("_")
+    return clean[:60] if clean else "label"
 
 
 def crop_text_label(page):
@@ -240,8 +290,11 @@ def split_pdf(input_path: Path, output_dir: Path) -> int:
             skipped += 1
             continue
 
-        # Alias als Dateiname versuchen (nur bei DHL/Text moeglich)
-        alias = extract_alias(page) if label_type == "text" else None
+        # Alias extrahieren: Text-Labels aus PDF-Text, Bild-Labels per OCR
+        if label_type == "text":
+            alias = extract_alias_from_text(page)
+        else:
+            alias = extract_alias_from_image(input_path, i - 1)
 
         if alias:
             safe_name = sanitize_filename(alias)
@@ -278,6 +331,14 @@ def split_pdf(input_path: Path, output_dir: Path) -> int:
 
 
 def main():
+    # Tesseract pruefen
+    try:
+        pytesseract.get_tesseract_version()
+    except pytesseract.TesseractNotFoundError:
+        print("FEHLER: Tesseract ist nicht installiert.")
+        print("  brew install tesseract tesseract-lang")
+        sys.exit(1)
+
     IMPORT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     DONE_DIR.mkdir(parents=True, exist_ok=True)
@@ -290,8 +351,8 @@ def main():
         print(f"\nBitte PDFs dort ablegen und erneut starten.")
         sys.exit(1)
 
-    print(f"=== Label Splitter ===")
-    print(f"Erkennt und extrahiert Etikett-Seiten (Text + Bild).\n")
+    print(f"=== Label Splitter (mit OCR) ===")
+    print(f"Erkennt und extrahiert Etikett-Seiten (Text + Bild/OCR).\n")
     print(f"Verarbeite   {len(pdf_files)} PDF(s)...")
     print(f"Import:      {IMPORT_DIR}")
     print(f"Output:      {OUTPUT_DIR}")
