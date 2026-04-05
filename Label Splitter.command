@@ -39,8 +39,8 @@ if [ -z "$(ls import/*.pdf 2>/dev/null)" ]; then
     echo ""
 fi
 
-# Skript im Split-Modus ausfuehren
-python3 extract_label.py --split
+# Skript ausfuehren
+python3 split_labels.py
 
 echo ""
 

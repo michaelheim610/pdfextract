@@ -2,14 +2,12 @@
 """
 Whatnot Label Extractor
 -----------------------
-Extrahiert Versandetiketten aus Whatnot-PDF-Dokumenten.
+Extrahiert das Versandetikett (letzte Seite) aus Whatnot-PDF-Dokumenten
+und speichert es als eigenes PDF.
 
-Zwei Modi:
-    1) Standard: Letzte Seite aus Whatnot-PDFs extrahieren
-       python extract_label.py
-
-    2) Split: PDF mit mehreren Etiketten in einzelne PDFs aufteilen
-       python extract_label.py --split
+Nutzung:
+    # PDFs in den 'import' Ordner legen, dann einfach starten:
+    python extract_label.py
 """
 
 import shutil
@@ -25,27 +23,6 @@ OUTPUT_DIR = SCRIPT_DIR / "output"
 DONE_DIR = SCRIPT_DIR / "verarbeitet"
 
 
-def crop_label(page):
-    """Schneidet den Leerraum einer Label-Seite weg (1:1, keine Skalierung)."""
-    media_box = page.mediabox
-    page_width = float(media_box.width)
-    page_height = float(media_box.height)
-
-    # Label-Bereich: linke ~58% Breite, obere ~50% Hoehe
-    content_width = page_width * 0.58
-    content_height = page_height * 0.50
-
-    page.mediabox.lower_left = (
-        float(media_box.left),
-        page_height - content_height,
-    )
-    page.mediabox.upper_right = (
-        float(media_box.left) + content_width,
-        float(media_box.top),
-    )
-    return page
-
-
 def extract_label(input_path: Path, output_dir: Path) -> Path | None:
     """Extrahiert die letzte Seite eines Whatnot-PDFs als Label."""
     reader = PdfReader(input_path)
@@ -54,7 +31,25 @@ def extract_label(input_path: Path, output_dir: Path) -> Path | None:
         print(f"  Uebersprungen: {input_path.name} (nur {len(reader.pages)} Seite)")
         return None
 
-    last_page = crop_label(reader.pages[-1])
+    last_page = reader.pages[-1]
+
+    # Leerraum wegschneiden, Inhalt 1:1 behalten
+    media_box = last_page.mediabox
+    page_width = float(media_box.width)
+    page_height = float(media_box.height)
+
+    # Label-Bereich: linke ~58% Breite, obere ~50% Hoehe
+    content_width = page_width * 0.58
+    content_height = page_height * 0.50
+
+    last_page.mediabox.lower_left = (
+        float(media_box.left),
+        page_height - content_height,
+    )
+    last_page.mediabox.upper_right = (
+        float(media_box.left) + content_width,
+        float(media_box.top),
+    )
 
     writer = PdfWriter()
     writer.add_page(last_page)
@@ -67,31 +62,7 @@ def extract_label(input_path: Path, output_dir: Path) -> Path | None:
     return output_path
 
 
-def split_labels(input_path: Path, output_dir: Path) -> int:
-    """Teilt ein PDF mit mehreren Etiketten in einzelne PDFs auf."""
-    reader = PdfReader(input_path)
-    count = 0
-
-    for i, page in enumerate(reader.pages, start=1):
-        page = crop_label(page)
-
-        writer = PdfWriter()
-        writer.add_page(page)
-
-        # Dateiname: original_seite1.pdf, original_seite2.pdf, ...
-        output_path = output_dir / f"{input_path.stem}_seite{i}.pdf"
-        with open(output_path, "wb") as f:
-            writer.write(f)
-
-        print(f"  OK: {input_path.name} -> Seite {i}")
-        count += 1
-
-    return count
-
-
 def main():
-    split_mode = "--split" in sys.argv
-
     IMPORT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     DONE_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,8 +75,8 @@ def main():
         print(f"\nBitte PDFs dort ablegen und erneut starten.")
         sys.exit(1)
 
-    modus = "SPLIT (alle Seiten einzeln)" if split_mode else "STANDARD (letzte Seite)"
-    print(f"Modus:       {modus}")
+    print(f"=== Label Extractor ===")
+    print(f"Extrahiere letzte Seite (Etikett) aus Whatnot-PDFs.\n")
     print(f"Verarbeite   {len(pdf_files)} PDF(s)...")
     print(f"Import:      {IMPORT_DIR}")
     print(f"Output:      {OUTPUT_DIR}")
@@ -113,16 +84,10 @@ def main():
 
     count = 0
     for pdf_file in pdf_files:
-        if split_mode:
-            result = split_labels(pdf_file, OUTPUT_DIR)
-            if result > 0:
-                shutil.move(str(pdf_file), DONE_DIR / pdf_file.name)
-                count += result
-        else:
-            result = extract_label(pdf_file, OUTPUT_DIR)
-            if result:
-                shutil.move(str(pdf_file), DONE_DIR / pdf_file.name)
-                count += 1
+        result = extract_label(pdf_file, OUTPUT_DIR)
+        if result:
+            shutil.move(str(pdf_file), DONE_DIR / pdf_file.name)
+            count += 1
 
     print(f"\n{count} Label(s) extrahiert.")
     if count > 0:

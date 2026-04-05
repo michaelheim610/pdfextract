@@ -1,14 +1,21 @@
-# Whatnot Label Extractor
+# Whatnot Label Tools
 
-Extrahiert automatisch Versandetiketten (DHL, etc.) aus Whatnot-PDF-Dokumenten und speichert sie als druckfertige DIN A6 PDFs.
+Zwei Werkzeuge zum Extrahieren von Versandetiketten aus PDF-Dokumenten.
 
 ## Das Problem
 
-Whatnot liefert PDF-Dokumente mit Lieferschein + Versandetikett. Um das Etikett zu drucken, muss man es manuell per Screenshot ausschneiden. Bei vielen Bestellungen ist das sehr zeitaufwendig.
+- **Whatnot-PDFs** enthalten Lieferschein + Etikett - das Label muss manuell ausgeschnitten werden
+- **Etiketten-PDFs** enthalten mehrere Labels auf A4-Seiten - muessen einzeln zugeschnitten werden
 
-## Die Loesung
+Bei vielen Bestellungen ist das sehr zeitaufwendig.
 
-Dieses Skript extrahiert automatisch das Etikett (letzte Seite) aus allen PDFs, schneidet es auf den Label-Bereich zu und skaliert es auf **DIN A6 Hochkant (105 x 148 mm)** - druckfertig.
+## Die Werkzeuge
+
+### 1. Label Extractor (`extract_label.py`)
+Fuer **Whatnot-PDFs** (Lieferschein + Etikett): Extrahiert die letzte Seite (das Etikett) und schneidet den Leerraum weg.
+
+### 2. Label Splitter (`split_labels.py`)
+Fuer **PDFs die nur Etiketten enthalten**: Jede Seite wird auf den Label-Bereich zugeschnitten und als einzelnes PDF gespeichert.
 
 ## Voraussetzungen
 
@@ -27,38 +34,45 @@ pip install -r requirements.txt
 
 ### Mac (einfachste Variante)
 
-1. Doppelklick auf **`Label Extractor.command`**
-2. PDFs in den geoeffneten `import/` Ordner legen
-3. Enter druecken
-4. Fertige Labels erscheinen im `output/` Ordner
+PDFs in den `import/` Ordner legen, dann Doppelklick auf:
+
+| Datei | Funktion |
+|---|---|
+| **`Label Extractor.command`** | Whatnot-PDFs: nur das Etikett (letzte Seite) |
+| **`Label Splitter.command`** | Jede Seite einzeln als Label-PDF |
 
 ### Terminal
 
 ```bash
-# PDFs in den import/ Ordner kopieren, dann:
+# Whatnot-PDFs: Etikett extrahieren
 python3 extract_label.py
+
+# Etiketten-PDFs: alle Seiten einzeln zuschneiden
+python3 split_labels.py
 ```
 
 ## Ordnerstruktur
 
 ```
 pdfextract/
-├── import/          # PDFs hier ablegen
-├── output/          # Extrahierte Labels (DIN A6)
-├── verarbeitet/     # Originale nach Verarbeitung
-├── extract_label.py
-├── Label Extractor.command
-└── requirements.txt
+├── import/                    # PDFs hier ablegen
+├── output/                    # Fertige Labels
+├── verarbeitet/               # Originale nach Verarbeitung
+├── extract_label.py           # Whatnot-Etikett extrahieren
+├── split_labels.py            # Etiketten-PDF aufteilen
+├── Label Extractor.command    # Mac Doppelklick-Start
+├── Label Splitter.command     # Mac Doppelklick-Start
+├── requirements.txt
+└── LICENSE
 ```
 
 ## Ablauf
 
 1. PDFs in `import/` legen (beliebig viele)
-2. Skript starten
-3. Fuer jede PDF wird das Etikett von der **letzten Seite** extrahiert
-4. Label wird auf **DIN A6 Hochkant** zugeschnitten und skaliert
-5. Fertiges Label landet in `output/` (gleicher Dateiname)
-6. Original wird nach `verarbeitet/` verschoben
+2. Passendes Werkzeug starten
+3. Fertige Labels landen in `output/`
+4. Originale werden nach `verarbeitet/` verschoben
+5. `import/` ist leer und bereit fuer die naechste Runde
 
 ## Lizenz
 
