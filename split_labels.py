@@ -3,9 +3,12 @@
 Label Splitter - A4 Etiketten-PDFs aufteilen
 ---------------------------------------------
 Nimmt PDFs und extrahiert nur Seiten die ein Versandetikett enthalten.
-Erkennt automatisch Label-Seiten anhand von Schluesselwoertern
-(DHL, Sendungsnr, Leitcode, Barcode, etc.).
-Seiten ohne Etikett (z.B. Lieferscheine) werden uebersprungen.
+
+Erkennt zwei Typen:
+  1) Text-Labels (DHL etc.) - erkannt anhand Schluesselwoertern
+  2) Bild-Labels (Deutsche Post/GoGreen) - erkannt als eingebettete Bilder
+
+Seiten ohne Etikett werden uebersprungen.
 
 Nutzung:
     # PDFs in den 'import' Ordner legen, dann:
@@ -16,7 +19,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter, Transformation
 
 # Projektverzeichnis (dort wo das Skript liegt)
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -43,28 +46,65 @@ LABEL_KEYWORDS = [
 ]
 
 
-def is_label_page(page) -> bool:
-    """Prueft ob eine Seite ein Versandetikett enthaelt."""
+def has_label_text(page) -> bool:
+    """Prueft ob eine Seite Label-Text enthaelt."""
     try:
         text = page.extract_text().lower()
     except Exception:
+        return False
+
+    if not text.strip():
         return False
 
     # Leerzeichen zwischen Buchstaben entfernen (manche PDFs haben
     # "D H L  K L E I N P A K E T" statt "DHL KLEINPAKET")
     text_compact = text.replace(" ", "")
 
-    # In beiden Varianten suchen
     matches = sum(
         1 for kw in LABEL_KEYWORDS
         if kw in text or kw.replace(" ", "") in text_compact
     )
-    # Mindestens 2 Schluesselwoerter muessen gefunden werden
     return matches >= 2
 
 
-def crop_to_label(page):
-    """Schneidet eine A4-Seite auf den Label-Bereich zu (1:1, keine Skalierung)."""
+def has_label_image(page) -> bool:
+    """Prueft ob eine Seite ein eingebettetes Bild-Label enthaelt
+    (z.B. Deutsche Post/GoGreen - kein extrahierbarer Text)."""
+    try:
+        resources = page.get("/Resources", {})
+        xobjects = resources.get("/XObject", {})
+
+        for _, obj in xobjects.items():
+            resolved = obj.get_object()
+            # Form XObject mit eingebettetem Bild (typisch fuer Bild-Labels)
+            if resolved.get("/Subtype") == "/Form":
+                form_res = resolved.get("/Resources", {})
+                form_xobj = form_res.get("/XObject", {})
+                for _, fobj in form_xobj.items():
+                    fresolved = fobj.get_object()
+                    if fresolved.get("/Subtype") == "/Image":
+                        return True
+            # Direkt eingebettetes Bild
+            if resolved.get("/Subtype") == "/Image":
+                return True
+    except Exception:
+        return False
+
+    return False
+
+
+def detect_label_type(page) -> str | None:
+    """Erkennt ob und welcher Typ Label auf der Seite ist.
+    Returns: 'text', 'image', oder None"""
+    if has_label_text(page):
+        return "text"
+    if has_label_image(page):
+        return "image"
+    return None
+
+
+def crop_text_label(page):
+    """Schneidet ein Text-Label (DHL etc.) auf den Label-Bereich zu."""
     media_box = page.mediabox
     page_width = float(media_box.width)
     page_height = float(media_box.height)
@@ -84,6 +124,26 @@ def crop_to_label(page):
     return page
 
 
+def crop_and_rotate_image_label(page):
+    """Schneidet ein Bild-Label zu und dreht es ins Hochformat."""
+    media_box = page.mediabox
+    page_width = float(media_box.width)
+    page_height = float(media_box.height)
+
+    # Bild-Label: obere ~62% Hoehe (Bild ist 508px von ~791px Seitenhoehe)
+    content_height = page_height * 0.62
+
+    page.mediabox.lower_left = (
+        float(media_box.left),
+        page_height - content_height,
+    )
+
+    # Um 90 Grad drehen -> Hochformat
+    page.rotate(90)
+
+    return page
+
+
 def split_pdf(input_path: Path, output_dir: Path) -> int:
     """Extrahiert nur Label-Seiten aus einem PDF."""
     reader = PdfReader(input_path)
@@ -91,12 +151,19 @@ def split_pdf(input_path: Path, output_dir: Path) -> int:
     skipped = 0
 
     for i, page in enumerate(reader.pages, start=1):
-        if not is_label_page(page):
+        label_type = detect_label_type(page)
+
+        if label_type is None:
             print(f"  Seite {i}: Kein Etikett erkannt - uebersprungen")
             skipped += 1
             continue
 
-        page = crop_to_label(page)
+        if label_type == "text":
+            page = crop_text_label(page)
+            type_info = "DHL/Text"
+        else:
+            page = crop_and_rotate_image_label(page)
+            type_info = "Bild (Deutsche Post/GoGreen)"
 
         writer = PdfWriter()
         writer.add_page(page)
@@ -109,7 +176,7 @@ def split_pdf(input_path: Path, output_dir: Path) -> int:
         with open(output_path, "wb") as f:
             writer.write(f)
 
-        print(f"  Seite {i}: Label {count + 1} extrahiert")
+        print(f"  Seite {i}: Label {count + 1} extrahiert [{type_info}]")
         count += 1
 
     if skipped > 0:
@@ -132,7 +199,7 @@ def main():
         sys.exit(1)
 
     print(f"=== Label Splitter ===")
-    print(f"Erkennt und extrahiert nur Etikett-Seiten.\n")
+    print(f"Erkennt und extrahiert Etikett-Seiten (Text + Bild).\n")
     print(f"Verarbeite   {len(pdf_files)} PDF(s)...")
     print(f"Import:      {IMPORT_DIR}")
     print(f"Output:      {OUTPUT_DIR}")
