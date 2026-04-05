@@ -136,48 +136,47 @@ def crop_text_label(page):
 
 
 def save_image_label(input_path: Path, page_index: int, output_path: Path):
-    """Extrahiert ein Bild-Label mit pikepdf: Crop + Skalierung + 270° Rotation auf 36x89mm."""
+    """Extrahiert ein Bild-Label mit pikepdf auf 36x89mm Hochformat mit Raendern."""
     pdf = pikepdf.open(input_path)
     page = pdf.pages[page_index]
 
-    # Bild-Koordinaten auf der Seite
+    # Bild-Koordinaten auf der Original-Seite
     img_left = IMG_FORM_X * SCALE_FACTOR
     img_bottom = IMG_FORM_Y * SCALE_FACTOR
     img_width = IMG_FORM_W * SCALE_FACTOR
     img_height = IMG_FORM_H * SCALE_FACTOR
 
-    # Skalierungsfaktoren: Querformat -> 36x89mm Hochformat
-    # Nach 270° Rotation: visuelle Breite = mediabox_height, visuelle Hoehe = mediabox_width
-    sx = TARGET_H_PT / img_width    # Breite -> Hoehe
-    sy = TARGET_W_PT / img_height   # Hoehe -> Breite
+    # Skalierung: Querformat-Bild -> 36x89mm Hochformat
+    sx = TARGET_H_PT / img_width    # Bildbreite -> Seitenhoehe
+    sy = TARGET_W_PT / img_height   # Bildhoehe -> Seitenbreite
 
-    # Skalierte Mediabox
-    new_left = img_left * sx
-    new_bottom = img_bottom * sy
-    new_right = (img_left + img_width) * sx
-    new_top = (img_bottom + img_height) * sy
+    # Endgueltige Seitengroesse (Hochformat) mit Raendern
+    page_w = TARGET_W_PT + MARGIN_LEFT
+    page_h = TARGET_H_PT + MARGIN_TOP
 
-    page.mediabox = [new_left, new_bottom, new_right, new_top]
-    page.cropbox = page.mediabox
-
-    # Content Stream mit Skalierung vorschalten
+    # Content-Stream-Transformation (von innen nach aussen gelesen):
+    # 1. Bild zum Ursprung verschieben (-img_left, -img_bottom)
+    # 2. Skalieren (sx, sy) -> Bild ist jetzt (TARGET_H_PT x TARGET_W_PT) Querformat
+    # 3. 270° im Uhrzeigersinn drehen (= 90° gegen UZS) -> Hochformat
+    # 4. In Endposition verschieben (mit Rand links, Rand oben bleibt frei)
     raw = page.obj["/Contents"].read_bytes()
-    scaled = f"q {sx:.6f} 0 0 {sy:.6f} 0 0 cm\n".encode() + raw + b"\nQ"
-    page.obj["/Contents"] = pdf.make_stream(scaled)
+    new_content = (
+        f"q\n"
+        f"1 0 0 1 {MARGIN_LEFT + TARGET_W_PT:.6f} 0 cm\n"
+        f"0 1 -1 0 0 0 cm\n"
+        f"{sx:.6f} 0 0 {sy:.6f} 0 0 cm\n"
+        f"1 0 0 1 {-img_left:.6f} {-img_bottom:.6f} cm\n"
+    ).encode() + raw + b"\nQ"
 
-    # 270° Rotation -> Hochformat
-    page.Rotate = 270
+    page.obj["/Contents"] = pdf.make_stream(new_content)
+    page.mediabox = [0, 0, page_w, page_h]
 
-    # Raender hinzufuegen (nach Rotation)
-    # Bei Rotate=270: visuell oben = mediabox links, visuell links = mediabox unten
-    mb = page.mediabox
-    page.mediabox = [
-        float(mb[0]) - MARGIN_TOP,   # oben: links erweitern
-        float(mb[1]) - MARGIN_LEFT,  # links: unten erweitern
-        float(mb[2]),
-        float(mb[3]),
-    ]
-    page.cropbox = page.mediabox
+    # Alle Box-Attribute und Rotation entfernen
+    for box in ["/CropBox", "/TrimBox", "/BleedBox", "/ArtBox"]:
+        if box in page.obj:
+            del page.obj[box]
+    if "/Rotate" in page.obj:
+        del page.obj["/Rotate"]
 
     out = pikepdf.new()
     out.pages.append(page)
