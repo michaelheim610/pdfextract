@@ -133,11 +133,11 @@ def extract_alias_from_text(page) -> Optional[str]:
     if not text:
         return None
 
-    lines = [l.replace(" ", "") for l in text.split("\n") if l.strip()]
+    lines = [l.replace(" ", "").strip() for l in text.splitlines() if l.strip()]
 
     # "An:" oder "To:" finden, dann: Name, Alias, Strasse
     for idx, line in enumerate(lines):
-        if line.lower() in ("an:", "to:") and idx + 2 < len(lines):
+        if line.lower().rstrip(":") + ":" in ("an:", "to:") and idx + 2 < len(lines):
             alias = lines[idx + 2]  # Zeile nach dem Namen
             # Pruefen ob es eine Strasse ist (Strassenname + Hausnummer)
             street_patterns = (
