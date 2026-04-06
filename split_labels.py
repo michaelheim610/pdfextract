@@ -21,6 +21,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 import pikepdf
 from pypdf import PdfReader, PdfWriter
@@ -107,7 +108,7 @@ def has_label_image(page) -> bool:
     return False
 
 
-def extract_alias(page) -> str | None:
+def extract_alias(page) -> Optional[str]:
     """Extrahiert den Whatnot-Alias des Kaeufers aus einem DHL-Label.
 
     Struktur: ... An: / Name / Alias / Strasse ...
@@ -148,7 +149,7 @@ def sanitize_filename(name: str) -> str:
     return clean[:60] if clean else "label"
 
 
-def detect_label_type(page) -> str | None:
+def detect_label_type(page) -> Optional[str]:
     """Erkennt ob und welcher Typ Label auf der Seite ist."""
     if has_label_text(page):
         return "text"

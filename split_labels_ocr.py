@@ -25,6 +25,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional
 
 import pikepdf
 from PIL import Image
@@ -120,7 +121,7 @@ def has_label_image(page) -> bool:
     return False
 
 
-def extract_alias_from_text(page) -> str | None:
+def extract_alias_from_text(page) -> Optional[str]:
     """Extrahiert den Whatnot-Alias aus einem DHL-Label (Text-basiert).
 
     Struktur: ... An: / Name / Alias / Strasse ...
@@ -152,7 +153,7 @@ def extract_alias_from_text(page) -> str | None:
     return None
 
 
-def extract_alias_from_image(input_path: Path, page_index: int) -> str | None:
+def extract_alias_from_image(input_path: Path, page_index: int) -> Optional[str]:
     """Extrahiert den Whatnot-Alias per OCR aus einem Deutsche Post Bild-Label.
 
     Sucht nach dem Muster: Name (ALIAS) im OCR-Text.
@@ -191,7 +192,7 @@ def extract_alias_from_image(input_path: Path, page_index: int) -> str | None:
     return None
 
 
-def detect_label_type(page) -> str | None:
+def detect_label_type(page) -> Optional[str]:
     """Erkennt ob und welcher Typ Label auf der Seite ist."""
     if has_label_text(page):
         return "text"
