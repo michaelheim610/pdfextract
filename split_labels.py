@@ -108,11 +108,28 @@ def has_label_image(page) -> bool:
     return False
 
 
+def _is_valid_alias(candidate):
+    """Prueft ob ein Kandidat ein gueltiger Alias ist (keine Strasse, kein Land)."""
+    if not candidate or len(candidate) < 2:
+        return False
+    street_patterns = (
+        r"(?:stra[sß]e|str\.|weg|gasse|platz|allee|ring|damm|"
+        r"ufer|hof|steig)\s*\d"
+    )
+    if re.search(street_patterns, candidate, re.IGNORECASE):
+        return False
+    if candidate.upper() in ("GERMANY", "AUSTRIA", "SWITZERLAND", "FRANCE"):
+        return False
+    if candidate.isdigit():
+        return False
+    return True
+
+
 def extract_alias(page) -> Optional[str]:
     """Extrahiert den Whatnot-Alias des Kaeufers aus einem DHL-Label.
 
-    Struktur: ... An: / Name / Alias / Strasse ...
-    Der Alias steht in der Zeile nach dem Empfaengernamen.
+    Nutzt Doppel-Leerzeichen im PDF-Text um Woerter zu trennen.
+    Findet An:/To:, dann das Wort direkt vor der Strassenadresse = Alias.
     """
     try:
         text = page.extract_text()
@@ -121,23 +138,27 @@ def extract_alias(page) -> Optional[str]:
     if not text:
         return None
 
-    lines = [l.replace(" ", "").strip() for l in text.splitlines() if l.strip()]
+    # Woerter aus Rohtext: Doppel-Leerzeichen trennt Woerter
+    raw_words = re.split(r'  +|\n', text)
+    words = [w.replace(" ", "").strip() for w in raw_words if w.strip()]
 
-    # "An:" oder "To:" finden, dann: Name, Alias, Strasse
-    for idx, line in enumerate(lines):
-        if line.lower().rstrip(":") + ":" in ("an:", "to:") and idx + 2 < len(lines):
-            alias = lines[idx + 2]  # Zeile nach dem Namen
-            # Pruefen ob es eine Strasse ist (Strassenname + Hausnummer)
-            street_patterns = (
-                r"(?:stra[sß]e|str\.|weg|gasse|platz|allee|ring|damm|"
-                r"ufer|hof|steig|berg|feld|grund|park|markt)\s*\d"
-            )
-            if re.search(street_patterns, alias, re.IGNORECASE):
-                return None
-            # Sicherheitscheck: kein Land, keine reine Nummer
-            if alias.upper() == "GERMANY" or alias.isdigit():
-                return None
-            return alias
+    # An:/To: finden
+    an_idx = None
+    for i, w in enumerate(words):
+        if w.lower() in ("an:", "to:"):
+            an_idx = i
+            break
+
+    if an_idx is None:
+        return None
+
+    # Alias ist immer das 3. Wort nach An: (Vorname, Nachname, Alias)
+    alias_idx = an_idx + 3
+    if alias_idx < len(words):
+        candidate = words[alias_idx]
+        if _is_valid_alias(candidate):
+            return candidate
+
     return None
 
 
