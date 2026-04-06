@@ -153,6 +153,19 @@ def extract_alias_from_text(page) -> Optional[str]:
     return None
 
 
+def _ocr_image(img):
+    """Fuehrt OCR auf einem Bild aus. Versucht deu, dann eng, dann ohne Sprache."""
+    for lang in ["deu", "eng", None]:
+        try:
+            if lang:
+                return pytesseract.image_to_string(img, lang=lang)
+            else:
+                return pytesseract.image_to_string(img)
+        except pytesseract.TesseractError:
+            continue
+    return ""
+
+
 def extract_alias_from_image(input_path: Path, page_index: int) -> Optional[str]:
     """Extrahiert den Whatnot-Alias per OCR aus einem Deutsche Post Bild-Label.
 
@@ -177,7 +190,7 @@ def extract_alias_from_image(input_path: Path, page_index: int) -> Optional[str]
                         h = int(fobj.get("/Height"))
                         data = fobj.read_bytes()
                         img = Image.frombytes("RGB", (w, h), bytes(data))
-                        text = pytesseract.image_to_string(img, lang="deu")
+                        text = _ocr_image(img)
 
                         # Alias in Klammern suchen: "Name (ALIAS)"
                         match = re.search(r"\(([^)]+)\)", text)
@@ -187,8 +200,8 @@ def extract_alias_from_image(input_path: Path, page_index: int) -> Optional[str]
                                 pdf.close()
                                 return alias
         pdf.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"    OCR-Warnung: {e}")
     return None
 
 
